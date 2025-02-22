@@ -1,0 +1,29 @@
+defaults:
+  - model: reface
+  - writer: wandb
+  - metrics: example
+  - datasets: dataset
+  - dataloader: dataloader
+  - transforms: example
+  - _self_
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1e-5
+lr_scheduler:
+  _target_: torch.optim.lr_scheduler.StepLR
+  gamma: 0.9
+  step_size: ${trainer.epoch_len}
+loss_function:
+  _target_: src.loss.Loss
+trainer:
+  log_step: 50
+  n_epochs: 200
+  epoch_len: null
+  device_tensors: [ "target_img", "inpaint_img", "mask", "corrupt_img", "source_img" ] # which tensors should be on device (ex. GPU)
+  resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
+  override: False # if True, will override the previous run with the same name
+  monitor: "off" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
+  save_period: 1 # checkpoint each save_period epochs in addition to the best epoch
+  early_stop: ${trainer.n_epochs} # epochs for early stopping
+  save_dir: "saved"
+  seed: 1

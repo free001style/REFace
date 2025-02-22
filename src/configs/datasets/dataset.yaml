@@ -1,0 +1,10 @@
+train:
+  _target_: src.datasets.FFHQDataset
+  data_dir: ""
+  use_blur: True
+  blur_scale: 10
+val:
+  _target_: src.datasets.ValImgDataset
+  data_dir: ""
+  use_blur: True
+  blur_scale: 10

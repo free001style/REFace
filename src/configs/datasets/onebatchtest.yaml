@@ -1,0 +1,8 @@
+train:
+  _target_: src.datasets.FFHQDataset
+  data_dir: ""
+  limit: 10
+val:
+  _target_: src.datasets.ValImgDataset
+  data_dir: ""
+  limit: 10
