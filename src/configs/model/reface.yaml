@@ -18,7 +18,8 @@ vae:
   _target_: diffusers.models.AutoencoderKL.from_pretrained
   pretrained_model_name_or_path: "stabilityai/sd-vae-ft-mse"
 reface:
-  sd_ckpt: ""
-  landmark_predictor_path: "Other_dependencies/DLIB_landmark_det/shape_predictor_68_face_landmarks.dat"
-  arcface_path: "Other_dependencies/arcface/model_ir_se50.pth"
+  _target_: src.model.REFace
+  landmark_predictor_path: "data/checkpoints/shape_predictor_68_face_landmarks.dat"
+  arcface_path: "data/checkpoints/model_ir_se50.pth"
   ddim_steps: 5
+sd_ckpt: "data/checkpoints/sd-v1-4-modified-13channel.ckpt"

@@ -21,7 +21,7 @@ def update_ema(ema_model, model, decay=0.9999):
 def instantiate_model(config, device):
     unet = instantiate(config.unet)
     unet.load_state_dict(
-        torch.load(config.reface.sd_ckpt, map_location="cpu")["state_dict"],
+        torch.load(config.sd_ckpt, map_location="cpu"),
         strict=False,
     )
     vae = instantiate(config.vae)

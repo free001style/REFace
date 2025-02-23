@@ -1,8 +1,8 @@
 train:
   _target_: src.datasets.FFHQDataset
-  data_dir: ""
-  limit: 10
+  data_dir: "../ffhq/"
+  limit: 2
 val:
   _target_: src.datasets.ValImgDataset
-  data_dir: ""
+  data_dir: "../free001style/val_img"
   limit: 10

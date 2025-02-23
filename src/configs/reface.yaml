@@ -3,6 +3,7 @@ defaults:
   - writer: wandb
   - metrics: example
   - datasets: dataset
+  # - datasets: onebatchtest
   - dataloader: dataloader
   - transforms: example
   - _self_
@@ -10,14 +11,13 @@ optimizer:
   _target_: torch.optim.AdamW
   lr: 1e-5
 lr_scheduler:
-  _target_: torch.optim.lr_scheduler.StepLR
+  _target_: torch.optim.lr_scheduler.ExponentialLR
   gamma: 0.9
-  step_size: ${trainer.epoch_len}
 loss_function:
   _target_: src.loss.Loss
 trainer:
   log_step: 50
-  n_epochs: 200
+  n_epochs: 20
   epoch_len: null
   device_tensors: [ "target_img", "inpaint_img", "mask", "corrupt_img", "source_img" ] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml

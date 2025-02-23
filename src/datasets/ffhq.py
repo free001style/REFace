@@ -4,10 +4,9 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
-from tqdm.auto import tqdm
 
 from src.datasets.base_dataset import BaseDataset
-from src.utils.io_utils import ROOT_PATH, read_json, write_json
+from src.utils.io_utils import ROOT_PATH
 
 from .data_utils import get_tensor, logical_or_reduce
 
@@ -85,12 +84,13 @@ class FFHQDataset(BaseDataset):
         ).astype(float)
         mask = torch.from_numpy(mask)
 
-        mask_transform = transforms.RandomPerspective(distortion_scale=0.2)(mask)
+        mask_transform = transforms.RandomPerspective(distortion_scale=0.3)(mask.unsqueeze(0))[0]
 
         masked_img = img * (1 - mask_transform)
 
         masked_source_img = source_img * mask
         masked_source_img = transforms.Grayscale(3)(masked_source_img)
+        masked_source_img = transforms.RandomHorizontalFlip()(masked_source_img)
 
         if self.use_blur:
             blur_image = torch.nn.functional.interpolate(
@@ -108,4 +108,5 @@ class FFHQDataset(BaseDataset):
             "mask": mask_transform,
             "corrupt_img": blur_image,
             "source_img": masked_source_img,
+            "only_source_img": source_img,
         }

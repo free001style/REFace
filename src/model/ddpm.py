@@ -2,21 +2,14 @@ from functools import partial
 
 import numpy as np
 import torch
-from einops import rearrange, repeat
+from einops import repeat
 from torch import nn
 from tqdm import tqdm
 
 from .ldm.utils import (
-    count_params,
     default,
-    exists,
     extract_into_tensor,
-    instantiate_from_config,
-    isimage,
-    ismap,
-    log_txt_as_img,
     make_beta_schedule,
-    mean_flat,
     noise_like,
 )
 
@@ -63,6 +56,7 @@ class DDPM(nn.Module):
         self.use_positional_encodings = use_positional_encodings
         self.model = model
         self.v_posterior = v_posterior
+        self.timesteps = timesteps
 
         if monitor is not None:
             self.monitor = monitor

@@ -49,8 +49,6 @@ class Trainer(BaseTrainer):
                 self.accelerator.backward(batch["loss"])
                 self._clip_grad_norm()
                 self.optimizer.step()
-                if self.lr_scheduler is not None:
-                    self.lr_scheduler.step()
 
         # update metrics for each loss (in case of multiple losses)
         for loss_name in self.config.writer.loss_names:
@@ -60,7 +58,7 @@ class Trainer(BaseTrainer):
             metrics.update(met.name, met(**batch))
         return batch
 
-    def _log_batch(self, batch_idx, batch, mode="train"):
+    def _log_batch(self, batch_idx, batch, mode="train", N_row=7):
         """
         Log data from batch. Calls self.writer.add_* to log data
         to the experiment tracker.
@@ -72,24 +70,42 @@ class Trainer(BaseTrainer):
             mode (str): train or inference. Defines which logging
                 rules to apply.
         """
-        if mode != "train":
-            self.model.eval()
-            samples = self.model.sample(**batch)
+        batch = self.move_batch_to_device(batch)
+        size = min(N_row, batch["source_img"].shape[0])
+        for key in batch:
+            if key != "loss" and batch[key] is not None:
+                batch[key] = batch[key][:size]
+        self.model.eval()
+        samples = self.model.module.sample(prepare=mode != "train", **batch)
+        if mode == "train":
             if batch["corrupt_img"] is not None:
                 img = torch.cat(
                     [
                         batch["source_img"],
                         batch["target_img"],
                         batch["corrupt_img"],
+                        batch["inpaint_img"],
+                        torch.cat([batch["mask"]] * 3, dim=1),
                         samples,
                     ],
                     dim=-1,
                 )
             else:
                 img = torch.cat(
-                    [batch["source_img"], batch["target_img"], samples], dim=-1
+                [batch["source_img"], batch["target_img"], batch["inpaint_img"], torch.cat([batch["mask"]] * 3, dim=1), samples], dim=-1
+            )
+                
+        else:
+            img = torch.cat(
+                    [
+                        batch["source_img"], # only_source_img
+                        batch["target_img"],
+                        samples,
+                    ],
+                    dim=-1,
                 )
-            img = rearrange(img, "b c h w -> c (b h) w")
-            img = denormalize(img)
-            self.writer.add_image("face_swap", img)
-            self.model.train()
+            
+        img = rearrange(img, "b c h w -> c (b h) w").clip_(-1, 1)
+        img = denormalize(img)
+        self.writer.add_image(f"{mode}_img", img)
+        self.model.train()

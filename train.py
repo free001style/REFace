@@ -1,8 +1,7 @@
 import warnings
-from copy import deepcopy
+import os
 
 import hydra
-import torch
 from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
@@ -13,6 +12,7 @@ from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 from src.utils.model_utils import instantiate_model
 
 warnings.filterwarnings("ignore", category=UserWarning)
+os.environ["HYDRA_FULL_ERROR"] = "1"
 
 
 @hydra.main(version_base=None, config_path="src/configs", config_name="reface")
@@ -26,12 +26,15 @@ def main(config):
         config (DictConfig): hydra experiment config.
     """
     set_random_seed(config.trainer.seed)
-
+    from accelerate import DistributedDataParallelKwargs
+    accelerator = Accelerator(kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=True)])
     project_config = OmegaConf.to_container(config)
-    logger = setup_saving_and_logging(config)
-    writer = instantiate(config.writer, logger, project_config)
-
-    accelerator = Accelerator()
+    if accelerator.is_main_process:
+        logger = setup_saving_and_logging(config)
+        writer = instantiate(config.writer, logger, project_config)
+    else:
+        logger = None
+        writer = None
 
     device = accelerator.device
 
@@ -57,13 +60,9 @@ def main(config):
     optimizer = instantiate(config.optimizer, params=trainable_params)
     lr_scheduler = instantiate(config.lr_scheduler, optimizer=optimizer)
 
-    # epoch_len = number of iterations for iteration-based training
-    # epoch_len = None or len(dataloader) for epoch-based training
     epoch_len = config.trainer.get("epoch_len")
-
-    model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
-    for part in dataloaders.keys():
-        dataloaders[part] = accelerator.prepare(dataloaders[part])
+    
+    model, optimizer, lr_scheduler= accelerator.prepare(model, optimizer, lr_scheduler)
 
     trainer = Trainer(
         model=model,

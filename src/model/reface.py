@@ -1,5 +1,3 @@
-from functools import partial
-
 import dlib
 import numpy as np
 import torch
@@ -11,28 +9,25 @@ from .ddpm import DDPM
 from .face_model.arcface import Arcface
 from .ldm.utils import (
     denormalize,
-    extract_into_tensor,
-    make_beta_schedule,
     make_ddim_sampling_parameters,
     make_ddim_timesteps,
     noise_like,
     require_grad,
-    un_norm_clip,
 )
 
 
 class REFace(DDPM):
     def __init__(
         self,
-        model,
+        unet,
         vae,
         device,
         landmark_predictor_path,
         arcface_path,
         ddim_steps,
     ):
-        super().__init__(model)
-        self.model = model
+        super().__init__(unet)
+        self.model = unet
         self.vae = vae
         self.detector = dlib.get_frontal_face_detector()
         self.device = device
@@ -86,6 +81,7 @@ class REFace(DDPM):
     def get_condition(self, target_img, source_img):
         landmarks = self.get_landmarks(target_img)
         c_landmark = landmarks.unsqueeze(1) if len(landmarks.shape) != 3 else landmarks
+        self.face_ID_model.eval()
         c_id = self.face_ID_model.extract_feats(source_img)[0].unsqueeze(1)
         c_all = torch.cat([c_landmark, c_id], dim=-1)
         return self.last_proj(c_all)
@@ -111,7 +107,7 @@ class REFace(DDPM):
         }
 
     def apply_model(self, x, t, cond):
-        return self.model(x, t, context=cond.unsqueeze(1))
+        return self.model(x, t, context=cond)
 
     def forward(self, **batch):
         output = self.prepare_batch(**batch)
@@ -139,15 +135,15 @@ class REFace(DDPM):
                 [noise_img, batch["inpaint_img_latent"], batch["mask_resize"]], dim=1
             )
         predict = self.apply_model(noise_img, t, batch["condition"])
-        return {"predict": predict}
+        return {"predict": predict, **output, "noise": noise}
 
-    def register_buffer(self, name, attr):
+    def _register_buffer(self, name, attr):
         if type(attr) == torch.Tensor:
             attr = attr.to(self.device)
         setattr(self, name, attr)
 
     def make_schedule(
-        self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0.0, verbose=True
+        self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0.0, verbose=False
     ):
         self.ddim_timesteps = make_ddim_timesteps(
             ddim_discr_method=ddim_discretize,
@@ -155,37 +151,37 @@ class REFace(DDPM):
             num_ddpm_timesteps=self.timesteps,
             verbose=verbose,
         )
-        alphas_cumprod = self.model.alphas_cumprod
+        alphas_cumprod = self.alphas_cumprod
         assert (
             alphas_cumprod.shape[0] == self.timesteps
         ), "alphas have to be defined for each timestep"
 
         def to_torch(x):
-            return x.clone().detach().to(torch.float32).to(self.model.device)
+            return x.clone().detach().to(torch.float32).to(self.device)
 
-        self.register_buffer("ddim_betas", to_torch(self.model.betas))
-        self.register_buffer("ddim_alphas_cumprod", to_torch(alphas_cumprod))
-        self.register_buffer(
-            "ddim_alphas_cumprod_prev", to_torch(self.model.alphas_cumprod_prev)
+        self._register_buffer("ddim_betas", to_torch(self.betas))
+        self._register_buffer("ddim_alphas_cumprod", to_torch(alphas_cumprod))
+        self._register_buffer(
+            "ddim_alphas_cumprod_prev", to_torch(self.alphas_cumprod_prev)
         )
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
-        self.register_buffer(
+        self._register_buffer(
             "ddim_sqrt_alphas_cumprod", to_torch(np.sqrt(alphas_cumprod.cpu()))
         )
-        self.register_buffer(
+        self._register_buffer(
             "ddim_sqrt_one_minus_alphas_cumprod",
             to_torch(np.sqrt(1.0 - alphas_cumprod.cpu())),
         )
-        self.register_buffer(
+        self._register_buffer(
             "ddim_log_one_minus_alphas_cumprod",
             to_torch(np.log(1.0 - alphas_cumprod.cpu())),
         )
-        self.register_buffer(
+        self._register_buffer(
             "ddim_sqrt_recip_alphas_cumprod",
             to_torch(np.sqrt(1.0 / alphas_cumprod.cpu())),
         )
-        self.register_buffer(
+        self._register_buffer(
             "ddim_sqrt_recipm1_alphas_cumprod",
             to_torch(np.sqrt(1.0 / alphas_cumprod.cpu() - 1)),
         )
@@ -197,32 +193,34 @@ class REFace(DDPM):
             eta=ddim_eta,
             verbose=verbose,
         )
-        self.register_buffer("ddim_sigmas", ddim_sigmas)
-        self.register_buffer("ddim_alphas", ddim_alphas)
-        self.register_buffer("ddim_alphas_prev", ddim_alphas_prev)
-        self.register_buffer("ddim_sqrt_one_minus_alphas", np.sqrt(1.0 - ddim_alphas))
+        self._register_buffer("ddim_sigmas", ddim_sigmas)
+        self._register_buffer("ddim_alphas", ddim_alphas)
+        self._register_buffer("ddim_alphas_prev", ddim_alphas_prev)
+        self._register_buffer("ddim_sqrt_one_minus_alphas", np.sqrt(1.0 - ddim_alphas))
         sigmas_for_original_sampling_steps = ddim_eta * torch.sqrt(
             (1 - self.ddim_alphas_cumprod_prev)
             / (1 - self.ddim_alphas_cumprod)
             * (1 - self.ddim_alphas_cumprod / self.ddim_alphas_cumprod_prev)
         )
-        self.register_buffer(
+        self._register_buffer(
             "ddim_sigmas_for_original_num_steps", sigmas_for_original_sampling_steps
         )
 
     @torch.no_grad()
     def sample(
         self,
-        mask=None,
+        prepare=True,
+        _mask=None,
         x0=None,
         unconditional_guidance_scale=1.0,
         unconditional_conditioning=None,
         **batch,
     ):
-        output = self.prepare_batch(**batch)
-        batch.update(output)
+        if prepare:
+            output = self.prepare_batch(**batch)
+            batch.update(output)
         samples = self.ddim_sampling(
-            mask=mask,
+            _mask=_mask,
             x0=x0,
             ddim_use_original_steps=False,
             unconditional_guidance_scale=unconditional_guidance_scale,
@@ -236,7 +234,7 @@ class REFace(DDPM):
         self,
         ddim_use_original_steps=False,
         x0=None,
-        mask=None,
+        _mask=None,
         unconditional_guidance_scale=1.0,
         unconditional_conditioning=None,
         **batch,
@@ -259,12 +257,12 @@ class REFace(DDPM):
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((img.shape[0],), step, device=device, dtype=torch.long)
-            if mask is not None:
+            if _mask is not None:
                 assert x0 is not None
                 img_orig = self.model.q_sample(
                     x0, ts
                 )  # TODO: deterministic forward pass?
-                img = img_orig * mask + (1.0 - mask) * img
+                img = img_orig * _mask + (1.0 - _mask) * img
                 print("here")
             img = self.p_sample_ddim(
                 img,
@@ -332,4 +330,4 @@ class REFace(DDPM):
         dir_xt = (1.0 - a_prev - sigma_t**2).sqrt() * e_t
         noise = sigma_t * noise_like(dir_xt.shape, device, repeat_noise)
         x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
-        return x_prev, pred_x0
+        return x_prev

@@ -4,10 +4,9 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
-from tqdm.auto import tqdm
 
 from src.datasets.base_dataset import BaseDataset
-from src.utils.io_utils import ROOT_PATH, read_json, write_json
+from src.utils.io_utils import ROOT_PATH
 
 from .data_utils import get_tensor, logical_or_reduce
 
@@ -45,7 +44,7 @@ class ValImgDataset(BaseDataset):
 
     def _create_index(self):
         index = []
-        for i in range(10):
+        for i in range(7):
             index.append(
                 {
                     "target_img_path": str(self._img_dir / "target" / f"{i}.png"),
@@ -101,7 +100,7 @@ class ValImgDataset(BaseDataset):
         masked_img = target_img * (1 - target_mask)
 
         masked_source_img = source_img * source_mask
-        masked_source_img = transforms.Grayscale(3)(masked_source_img)
+        # masked_source_img = transforms.Grayscale(3)(masked_source_img)
 
         if self.use_blur:
             blur_image = torch.nn.functional.interpolate(
@@ -114,6 +113,7 @@ class ValImgDataset(BaseDataset):
             blur_image = None
 
         return {
+            "only_source_img": source_img,
             "target_img": target_img,
             "inpaint_img": masked_img,
             "mask": target_mask,

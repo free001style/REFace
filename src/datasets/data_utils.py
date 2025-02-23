@@ -3,6 +3,8 @@ from itertools import repeat
 import numpy as np
 from hydra.utils import instantiate
 from torchvision import transforms
+from torch.utils.data.distributed import DistributedSampler
+from torch.distributed import get_world_size, get_rank
 
 from src.datasets.collate import collate_fn
 from src.utils.init_utils import set_worker_seed
@@ -72,10 +74,6 @@ def get_dataloaders(config, device):
     for dataset_partition in config.datasets.keys():
         dataset = datasets[dataset_partition]
 
-        assert config.dataloader.batch_size <= len(dataset), (
-            f"The batch size ({config.dataloader.batch_size}) cannot "
-            f"be larger than the dataset length ({len(dataset)})"
-        )
         batch_size = config.dataloader.batch_size
 
         partition_dataloader = instantiate(
@@ -86,6 +84,7 @@ def get_dataloaders(config, device):
             drop_last=(dataset_partition == "train"),
             shuffle=(dataset_partition == "train"),
             worker_init_fn=set_worker_seed,
+            # sampler=DistributedSampler(dataset, get_world_size(), get_rank()) if dataset_partition == "train" else None
         )
         dataloaders[dataset_partition] = partition_dataloader
 

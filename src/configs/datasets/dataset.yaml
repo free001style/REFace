@@ -1,10 +1,11 @@
 train:
   _target_: src.datasets.FFHQDataset
-  data_dir: ""
+  data_dir: "../ffhq/"
   use_blur: True
   blur_scale: 10
+  
 val:
   _target_: src.datasets.ValImgDataset
-  data_dir: ""
+  data_dir: "../free001style/val_img"
   use_blur: True
   blur_scale: 10

@@ -2,11 +2,8 @@ import logging
 import random
 from typing import List
 
-import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
-from torchvision import transforms
 
 logger = logging.getLogger(__name__)
 
