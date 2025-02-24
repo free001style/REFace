@@ -33,7 +33,7 @@ class REFace(DDPM):
         self.device = device
         self.predictor = dlib.shape_predictor(landmark_predictor_path)
         self.landmark_proj_out = nn.Linear(136, 256)
-        self.last_proj = nn.Linear(768, 768)
+        self.last_proj = nn.Sequential(nn.Linear(768, 768), nn.LayerNorm([1, 768]), nn.LeakyReLU(0.1), nn.Linear(768, 768))
         self.instantiate_id_model(arcface_path)
         self.ddim_steps = ddim_steps
         self.make_schedule(ddim_num_steps=self.ddim_steps)

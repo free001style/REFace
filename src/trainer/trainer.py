@@ -76,7 +76,10 @@ class Trainer(BaseTrainer):
             if key != "loss" and batch[key] is not None:
                 batch[key] = batch[key][:size]
         self.model.eval()
-        samples = self.model.module.sample(prepare=mode != "train", **batch)
+        if torch.cuda.device_count() == 1:
+            samples = self.model.sample(prepare=mode != "train", **batch)
+        else:
+            samples = self.model.module.sample(prepare=mode != "train", **batch)
         if mode == "train":
             if batch["corrupt_img"] is not None:
                 img = torch.cat(
